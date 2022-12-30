@@ -1,0 +1,7 @@
+number_item_current: 6407
+average_item_processed: 0
+prev_machine_state: 1
+prediction_energy_consumed: 0
+threshold: 0
+number_alarm_triggered: 0
+actual_shift: E01
