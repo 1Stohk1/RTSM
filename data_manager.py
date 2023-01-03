@@ -23,13 +23,15 @@ def read_log():
             if key == 'actual_shift':
                 constants[key] = value
             # If the key is "number_item_current", extract the value
+            elif key.startswith("incremental"):
+                constants[key] = float(value)
             else:
                 constants[key] = int(value)
     return constants
 
 
 def request_sensor():
-    url = "http://127.0.0.1:5001/get_data_range?asset=P01&start_date=2022-10-04 11:59&end_date=2022-10-04 23:59"
+    url = "http://127.0.0.1:5001/get_data_range?asset=P01&start_date=2022-10-04 11:57&end_date=2022-10-04 23:59"
 
     r_data = requests.get(url=url)
 

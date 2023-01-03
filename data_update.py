@@ -35,10 +35,12 @@ from data_manager import modify_val, request_sensor, request_shift, read_log
 #   "session": "2AF",                                       OUTPUT DONE
 #   "machine_state": "0",                                   OUTPUT DONE
 #   "incremental_cycle_time_avg": "2.49313240617579E-16",   OUTPUT
+#   "incremental_cycle_time_var": "xxx",                    OUTPUT
 #   "incremental_energy_cost": "10.401296428",              OUTPUT
 #   "incremental_items_avg": "0",                           OUTPUT
 #   "incremental_power": "20719.714",                       OUTPUT
 #   "incremental_power_avg": "363.503754385965",            OUTPUT
+#   "incremental_power_var": "217.192166688596",            OUTPUT
 #   "part_program": 0,                                      OUTPUT
 # }
 
@@ -59,7 +61,14 @@ constant_data = {
     'threshold': 0,
     'number_alarm_triggered': 0,
     'actual_shift': '',
-    'row_current_shift': 0
+    'row_current_shift': 0,
+    'incremental_power_var': 0,
+    'incremental_cycle_time_var': 0,
+    "incremental_cycle_time_avg": 0,
+    "incremental_energy_cost": 0,
+    "incremental_items_avg": 0,
+    "incremental_power": 0,
+    "incremental_power_avg": 0
 }
 
 try:
@@ -94,6 +103,9 @@ for data in request_sensor():
     year = sensor_data['ts'].year
     month = sensor_data['ts'].month
     day = sensor_data['ts'].day
+
+    # Print the variables to the console
+    print(f'Data incoming from sensor:\n {sensor_data}')
     for shift in shift_data:
         shift_start = datetime.strptime(shift['shift_start'], '%a, %d %b %Y %H:%M:%S %Z'). \
             replace(year=year, month=month, day=day)
@@ -104,10 +116,10 @@ for data in request_sensor():
         if (shift_end < shift_start) & (shift_end.hour < 12):
             shift_end = shift_end + timedelta(days=1)
 
-        # print(f"NAME {shift['shift_name']}\n"
-        #       f"The shift starts in:  {shift_start.day}th {shift_start.hour}:{shift_start.minute},\n"
-        #       f"Receiving in:         {sensor_data['ts'].day}th {sensor_data['ts'].hour}:{sensor_data['ts'].minute}\n"
-        #       f"The shift ends in:    {shift_end.day}th {shift_end.hour}:{shift_end.minute}")
+        print(f"NAME {shift['shift_name']}\n"
+              f"The shift starts in:  {shift_start.day}th {shift_start.hour}:{shift_start.minute},\n"
+              f"Receiving in:         {sensor_data['ts'].day}th {sensor_data['ts'].hour}:{sensor_data['ts'].minute}\n"
+              f"The shift ends in:    {shift_end.day}th {shift_end.hour}:{shift_end.minute}")
 
         if shift_start <= sensor_data['ts'] < shift_end:
             # print(f'shift: {shift["shift_name"]} and the cost is {shift["shift_cost"]}')
@@ -117,23 +129,68 @@ for data in request_sensor():
 
     log_value = read_log()
 
+    # Energy cost of the actual consumption
+    output_data['energy_cost'] = shift_cost * float(sensor_data['power_avg']) / 1000
+
     if log_value['actual_shift'] != shift_name:
-        print(f'The shift has changed {shift_name}')
-        constant_data['row_current_shift'] = 0
-        constant_data['actual_shift'] = shift_name
+        print('shift changed')
+        constant_data = {'number_item_current': 0, 'average_item_processed': 0, 'prev_machine_state': 0,
+                         'prediction_energy_consumed': 0, 'threshold': 0, 'number_alarm_triggered': 0,
+                         'actual_shift': shift_name, 'row_current_shift': 0, 'incremental_power_var': 0,
+                         'incremental_cycle_time_var': 0, "incremental_cycle_time_avg": 0, "incremental_energy_cost": 0,
+                         "incremental_items_avg": 0, "incremental_power": 0, "incremental_power_avg": 0}
         modify_val(constant_data)
         log_value = read_log()
+        output_data['incremental_power_var'] = 0
+        output_data['incremental_cycle_time_var'] = 0
+        output_data["incremental_cycle_time_avg"] = sensor_data['cycle_time']
+        output_data["incremental_energy_cost"] = output_data['energy_cost']
+        output_data["incremental_items_avg"] = sensor_data['items']
+        output_data["incremental_power"] = sensor_data['power_avg']
+        output_data["incremental_power_avg"] = sensor_data['power_avg']
+    else:
+        # compute new incremental metrics
+
+        # means
+        row_number = log_value['row_current_shift']
+        output_data["incremental_cycle_time_avg"] = (log_value["incremental_cycle_time_avg"] * row_number +
+                                                     sensor_data['cycle_time']) / (row_number + 1)
+        output_data["incremental_energy_cost"] = output_data['energy_cost'] + log_value['incremental_energy_cost']
+        output_data["incremental_items_avg"] = (log_value['incremental_items_avg'] * row_number + sensor_data[
+            'items']) / (row_number + 1)
+        output_data["incremental_power"] = sensor_data['power_avg'] + log_value['incremental_power']
+        output_data["incremental_power_avg"] = (log_value['incremental_power_avg'] * row_number + sensor_data[
+            'power_avg']) / (row_number + 1)
+        # var
+        output_data['incremental_power_var'] = log_value['incremental_power_var'] + (
+                sensor_data['power_avg'] - output_data["incremental_power_avg"]) * (
+                                                       sensor_data['power_avg'] - output_data["incremental_power_avg"]) \
+                                               / (row_number + 1)
+        output_data['incremental_cycle_time_var'] = log_value['incremental_cycle_time_var'] + (
+                sensor_data['cycle_time'] - output_data["incremental_cycle_time_avg"]) * (
+                                                            sensor_data['cycle_time'] - output_data[
+                                                        "incremental_cycle_time_avg"]) / (row_number + 1)
 
     # Call the function add_machine_state
-    output_data['energy_cost'] = shift_cost * float(sensor_data['power_avg']) / 1000
     output_data['session'] = shift_name
     output_data['machine_state'] = add_machine_state(sensor_data, log_value['prev_machine_state'])
     # To be added to constant.txt
     constant_data['row_current_shift'] = log_value['row_current_shift'] + 1
-    constant_data['prev_machine_state'] = output_data['machine_state']
     constant_data['number_item_current'] = sensor_data['items'] + log_value['number_item_current']
+    # The same that are saved in the DB
+    constant_data['prev_machine_state'] = output_data['machine_state']
     constant_data['actual_shift'] = output_data['session']
+    constant_data['incremental_power_var'] = output_data['incremental_power_var']
+    constant_data['incremental_cycle_time_var'] = output_data['incremental_cycle_time_var']
+    constant_data['incremental_cycle_time_avg'] = output_data['incremental_cycle_time_avg']
+    constant_data['incremental_energy_cost'] = output_data['incremental_energy_cost']
+    constant_data['incremental_items_avg'] = output_data['incremental_items_avg']
+    constant_data['incremental_power'] = output_data['incremental_power']
+    constant_data['incremental_power_avg'] = output_data['incremental_power_avg']
+    constant_data['incremental_items_avg'] = output_data['incremental_items_avg']
+
     modify_val(constant_data)
+
     # Print the output_data dictionary
     print(f'Output data:\n {output_data}')
     print(f'Constant data:\n {constant_data}\n')
