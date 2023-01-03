@@ -5,3 +5,4 @@ prediction_energy_consumed: 0
 threshold: 0
 number_alarm_triggered: 0
 actual_shift: E01
+row_current_shift: 0

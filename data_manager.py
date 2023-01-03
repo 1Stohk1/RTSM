@@ -4,7 +4,7 @@ import json
 
 def modify_val(constants):
     # Open the file in write and read mode
-    with open('constants.txt', 'w+') as file:
+    with open('constant.txt', 'w+') as file:
         # Iterate over the keys in the dictionary
         for key in constants:
             # Write the key-value pairs to the file
@@ -14,7 +14,7 @@ def modify_val(constants):
 def read_log():
     constants = {}
     # Open the file in read mode
-    with open('constants.txt', 'r') as file:
+    with open('constant.txt', 'r') as file:
         # Iterate over the lines in the file
         for line in file:
             # Split the line into key-value pairs

@@ -31,6 +31,7 @@ from data_manager import modify_val, request_sensor, request_shift, read_log
 #   "power_var": "217.192166688596",                        OUTPUT
 #   "predicted_alarm": 0,                                   OUTPUT
 #   "cycle_var": "0",                                       OUTPUT
+#   "cycle_mean": "0.18027573",                             OUTPUT
 #   "session": "2AF",                                       OUTPUT DONE
 #   "machine_state": "0",                                   OUTPUT DONE
 #   "incremental_cycle_time_avg": "2.49313240617579E-16",   OUTPUT
@@ -58,11 +59,12 @@ constant_data = {
     'threshold': 0,
     'number_alarm_triggered': 0,
     'actual_shift': '',
+    'row_current_shift': 0
 }
 
 try:
     # see if a txt file exists
-    with open('constants.txt', 'r') as f:
+    with open('constant.txt', 'r') as f:
         # read the file
         file = f.read()
 except FileNotFoundError:
@@ -113,14 +115,21 @@ for data in request_sensor():
 
     log_value = read_log()
 
+    if log_value['actual_shift'] != shift_name:
+        constant_data['row_current_shift'] = 1
+        constant_data['actual_shift'] = shift_name
+        modify_val(constant_data)
+        log_value = read_log()
+
     # Call the function add_machine_state
     output_data['energy_cost'] = shift_cost * float(sensor_data['power_avg']) / 1000
     output_data['session'] = shift_name
-    # To be added to both output_data and constants.txt
+    # To be added to both output_data and constant.txt
     output_data['machine_state'] = add_machine_state(sensor_data, log_value['prev_machine_state'])
     constant_data['prev_machine_state'] = output_data['machine_state']
     constant_data['number_item_current'] = sensor_data['items'] + log_value['number_item_current']
     constant_data['actual_shift'] = output_data['session']
+    constant_data['row_current_shift'] += 1
     print(constant_data['number_item_current'], sensor_data['items'], log_value['number_item_current'])
     modify_val(constant_data)
     # Print the output_data dictionary
