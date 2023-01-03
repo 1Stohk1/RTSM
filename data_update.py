@@ -95,28 +95,35 @@ for data in request_sensor():
     month = sensor_data['ts'].month
     day = sensor_data['ts'].day
 
-    # Print the variables to the console
-    print(f'Data incoming from sensor:\n {sensor_data}')
     i = 0
     for shift in shift_data:
         i += 1
-        print(f'The shift {i} that has the name {shift["shift_name"]}'
-              f' start at: {shift["shift_start"]} and end at: {shift["shift_end"]}')
         shift_start = datetime.strptime(shift['shift_start'], '%a, %d %b %Y %H:%M:%S %Z'). \
             replace(year=year, month=month, day=day)
         shift_end = datetime.strptime(shift['shift_end'], '%a, %d %b %Y %H:%M:%S %Z'). \
             replace(year=year, month=month, day=day)
-        if shift_end.hour < shift_start.hour:
+        if (shift_start > shift_end) & (shift_start.hour > 12):
             shift_start = shift_start - timedelta(days=1)
-        if shift_start.time() <= sensor_data['ts'].time() <= shift_end.time():
-            print(f'shift: {shift["shift_name"]} and the cost is {shift["shift_cost"]}')
+        if (shift_end < shift_start) & (shift_end.hour < 12):
+            shift_end = shift_end + timedelta(days=1)
+
+        # print(f"NAME {shift['shift_name']}\n"
+        #       f"The shift starts in:  {shift_start.day}th {shift_start.hour}:{shift_start.minute},\n"
+        #       f"Receiving in:         {sensor_data['ts'].day}th {sensor_data['ts'].hour}:{sensor_data['ts'].minute}\n"
+        #       f"The shift ends in:    {shift_end.day}th {shift_end.hour}:{shift_end.minute}")
+
+        if shift_start <= sensor_data['ts'] < shift_end:
+            # print(f'shift: {shift["shift_name"]} and the cost is {shift["shift_cost"]}')
             shift_cost = float(shift['shift_cost'])
             shift_name = shift['shift_name']
+            constant_data['row_current_shift'] = i
+            break
 
     log_value = read_log()
 
     if log_value['actual_shift'] != shift_name:
-        constant_data['row_current_shift'] = 1
+        print(f'The shift has changed {shift_name}')
+        constant_data['row_current_shift'] = 0
         constant_data['actual_shift'] = shift_name
         modify_val(constant_data)
         log_value = read_log()
@@ -124,15 +131,15 @@ for data in request_sensor():
     # Call the function add_machine_state
     output_data['energy_cost'] = shift_cost * float(sensor_data['power_avg']) / 1000
     output_data['session'] = shift_name
-    # To be added to both output_data and constant.txt
     output_data['machine_state'] = add_machine_state(sensor_data, log_value['prev_machine_state'])
+    # To be added to constant.txt
+    constant_data['row_current_shift'] = log_value['row_current_shift'] + 1
     constant_data['prev_machine_state'] = output_data['machine_state']
     constant_data['number_item_current'] = sensor_data['items'] + log_value['number_item_current']
     constant_data['actual_shift'] = output_data['session']
-    constant_data['row_current_shift'] += 1
-    print(constant_data['number_item_current'], sensor_data['items'], log_value['number_item_current'])
     modify_val(constant_data)
     # Print the output_data dictionary
     print(f'Output data:\n {output_data}')
+    print(f'Constant data:\n {constant_data}\n')
 
-    time.sleep(2)
+    time.sleep(4)

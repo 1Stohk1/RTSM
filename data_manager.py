@@ -20,11 +20,11 @@ def read_log():
             # Split the line into key-value pairs
             key, value = line.strip().split(': ')
             # If the key is "prev_machine_state", extract the value
-            if key == 'prev_machine_state':
-                constants['prev_machine_state'] = int(value)
+            if key == 'actual_shift':
+                constants[key] = value
             # If the key is "number_item_current", extract the value
-            elif key == 'number_item_current':
-                constants['number_item_current'] = int(value)
+            else:
+                constants[key] = int(value)
     return constants
 
 
