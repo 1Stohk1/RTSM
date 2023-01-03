@@ -94,10 +94,7 @@ for data in request_sensor():
     year = sensor_data['ts'].year
     month = sensor_data['ts'].month
     day = sensor_data['ts'].day
-
-    i = 0
     for shift in shift_data:
-        i += 1
         shift_start = datetime.strptime(shift['shift_start'], '%a, %d %b %Y %H:%M:%S %Z'). \
             replace(year=year, month=month, day=day)
         shift_end = datetime.strptime(shift['shift_end'], '%a, %d %b %Y %H:%M:%S %Z'). \
@@ -116,7 +113,6 @@ for data in request_sensor():
             # print(f'shift: {shift["shift_name"]} and the cost is {shift["shift_cost"]}')
             shift_cost = float(shift['shift_cost'])
             shift_name = shift['shift_name']
-            constant_data['row_current_shift'] = i
             break
 
     log_value = read_log()
