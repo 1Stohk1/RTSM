@@ -43,3 +43,8 @@ def request_shift():
     url = "https://private-d5992-shiftsmocking.apiary-mock.com/shifts"
     r_shift = requests.get(url=url)
     return json.loads(r_shift.text)
+
+
+def post_session(session_data):
+    # TODO: Salvare i dati nella tabella delle sessioni
+    pass
