@@ -28,22 +28,31 @@ from data_manager import modify_val, request_sensor, request_shift, read_log
 #   "asset": "P01",                                         INPUT
 
 #   "energy_cost": "0.18027573",                            OUTPUT DONE
-#   "power_var": "217.192166688596",                        OUTPUT
+#   "power_var": "217.192166688596",                        OUTPUT DONE
 #   "predicted_alarm": 0,                                   OUTPUT
-#   "cycle_var": "0",                                       OUTPUT
-#   "cycle_mean": "0.18027573",                             OUTPUT
+#   "cycle_var": "0",                                       OUTPUT DONE
+#   "cycle_mean": "0.18027573",                             OUTPUT DONE
 #   "session": "2AF",                                       OUTPUT DONE
 #   "machine_state": "0",                                   OUTPUT DONE
-#   "incremental_cycle_time_avg": "2.49313240617579E-16",   OUTPUT
-#   "incremental_cycle_time_var": "xxx",                    OUTPUT
-#   "incremental_energy_cost": "10.401296428",              OUTPUT
-#   "incremental_items_avg": "0",                           OUTPUT
-#   "incremental_power": "20719.714",                       OUTPUT
-#   "incremental_power_avg": "363.503754385965",            OUTPUT
-#   "incremental_power_var": "217.192166688596",            OUTPUT
+#   "incremental_cycle_time_avg": "2.49313240617579E-16",   OUTPUT DONE
+#   "incremental_cycle_time_var": "xxx",                    OUTPUT DONE
+#   "incremental_energy_cost": "10.401296428",              OUTPUT DONE
+#   "incremental_items_avg": "0",                           OUTPUT DONE
+#   "incremental_power": "20719.714",                       OUTPUT DONE
+#   "incremental_power_avg": "363.503754385965",            OUTPUT DONE
+#   "incremental_power_var": "217.192166688596",            OUTPUT DONE
 #   "part_program": 0,                                      OUTPUT
 # }
 
+# Threshold per part program e alarm prediction (costante per settare quante volte sono state sorpassate le predizioni)
+# Aggiornare le metriche per sessione
+# API per salvare i dati
+# Mocking dei dati dei sensori con solo le colonne in input così è il più simile possibile con le API di Zerynth
+# Creare delle routes per prendere i dati dal DB? Si possono adattare quelle già presenti?
+
+# Arrangiamento del front end con questa nuova routine?
+# Dire a quelli del FE che non serve più il timer e di usare le nuove routes, chiedendo solo l'ultima riga che
+# sarebbe quella aggiornata
 
 # Constants
 shift_cost = 0.0
@@ -134,6 +143,7 @@ for data in request_sensor():
 
     if log_value['actual_shift'] != shift_name:
         print('shift changed')
+        # TODO: Salvare i dati nella tabella delle sessioni
         constant_data = {'number_item_current': 0, 'average_item_processed': 0, 'prev_machine_state': 0,
                          'prediction_energy_consumed': 0, 'threshold': 0, 'number_alarm_triggered': 0,
                          'actual_shift': shift_name, 'row_current_shift': 0, 'incremental_power_var': 0,
