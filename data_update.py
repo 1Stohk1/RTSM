@@ -45,7 +45,7 @@ from data_manager import modify_val, request_sensor, request_shift, read_log, po
 #   "incremental_power_var": "217.192166688596",            OUTPUT DONE
 #   "incremental_state_change": 0,                          OUTPUT
 #   "incremental_part_program_cycle_time": [PP + number],   OUTPUT
-#   "part_program": 0,                                      OUTPUT
+#   "part_program": 0,                                      OUTPUT DONE
 # }
 
 # Threshold per part program e alarm prediction (costante per settare quante volte sono state sorpassate le predizioni)
@@ -200,8 +200,14 @@ for data in request_sensor():
     output_data['session'] = shift_name
     output_data['machine_state'] = add_machine_state(sensor_data, log_value['prev_machine_state'])
     # # TODO: Caricarsi i dati e nel secondo array ci sono gli intervalli
-    # model = pickle.loads('trained_part_program.model')
-    output_data['part_program'] = 0 if sensor_data['cycle_time'] == 15.0 else 1
+    model = pickle.loads('trained_part_program.model')
+    def classify_pp(model,value):
+        for pp,t in enumerate(model['splits']):
+            if value<t:
+                return pp
+        return -1
+
+    output_data['part_program'] = classify_pp(model,sensor_data['cycle_time'])
 
     # To be added to constant.txt
     constant_data['row_current_shift'] = log_value['row_current_shift'] + 1
