@@ -49,10 +49,10 @@ from data_manager import modify_val, request_sensor, request_shift, read_log, po
 # }
 
 # Threshold per part program e alarm prediction (costante per settare quante volte sono state sorpassate le predizioni)
-# Aggiornare le metriche per sessione
-# API per salvare i dati
+# Aggiornare le metriche per sessione da non fare
 # Mocking dei dati dei sensori con solo le colonne in input così è il più simile possibile con le API di Zerynth
 # Creare delle routes per prendere i dati dal DB? Si possono adattare quelle già presenti?
+# TODO: GET per prendere in input il feedback dal frontend, in caso di 0 cambiare la threshold dell'LSTM
 # TODO: Post per il salvataggio della row (controllo che il valore data sia unique)
 
 
