@@ -35,6 +35,7 @@ import numpy as np
 #   "asset": "P01",                                         INPUT
 #   "feedback: 0,                                           INPUT in caso fosse negativo la threshold scende (NUOVA FEATURE)
 
+
 #   "energy_cost": "0.18027573",                            OUTPUT DONE
 #   "power_var": "217.192166688596",                        OUTPUT DONE
 #   "predicted_alarm": 0,                                   OUTPUT
@@ -158,6 +159,10 @@ for data in request_sensor():
     # ----------------------------------------------------------------------------------------------------------------------
 
     log_value = read_log()
+
+    # Energy cost of the actual consumption
+    output_data['energy_cost'] = shift_cost * float(sensor_data['power_avg']) / 1000
+
     if log_value['actual_shift'] != shift_name:
         print('shift changed')
         post_session(log_value)
@@ -198,29 +203,20 @@ for data in request_sensor():
         output_data['incremental_cycle_time_var'] = log_value['incremental_cycle_time_var'] + (
                 sensor_data['cycle_time'] - output_data["incremental_cycle_time_avg"]) * (
                                                             sensor_data['cycle_time'] - output_data
-                                                    ["incremental_cycle_time_avg"]) / (row_number + 1)
-
-    # Energy cost of the actual consumption
-    output_data['energy_cost'] = shift_cost * float(sensor_data['power_avg']) / 1000
-
-    # Prediction of the Energy Consumed
-    tmp = pd.DataFrame(sensor_data, index=[0])
-    p = tmp[['items', 'working_time', 'idle_time', 'power_avg', 'power_min',
-             'power_max', 'power_working', 'power_idle', 'cycle_time', 'alarm_1']]
-    dataset_x = p.to_numpy()
-    dataset_x = normalize(dataset_x)
-    dataset_x = np.reshape(dataset_x, (1, 1, 10))
-    prediction = model.predict(dataset_x)
-    constant_data['prediction_energy_consumed'] = prediction.flatten()[0]
+                                                            ["incremental_cycle_time_avg"]) / (row_number + 1)
 
     # Call the function add_machine_state
     output_data['session'] = shift_name
     output_data['machine_state'] = add_machine_state(sensor_data, log_value['prev_machine_state'])
-
-    # TODO: Caricarsi i dati e nel secondo array ci sono gli intervalli
+    # # TODO: Caricarsi i dati e nel secondo array ci sono gli intervalli
     model = pickle.loads('trained_part_program.model')
-    output_data['part_program'] = 0 if sensor_data['cycle_time'] == 15.0 else 1
-    output_data['predicted_alarm'] = 0
+    def classify_pp(model,value):
+        for pp,t in enumerate(model['splits']):
+            if value<t:
+                return pp
+        return -1
+
+    output_data['part_program'] = classify_pp(model,sensor_data['cycle_time'])
 
     # To be added to constant.txt
     if warning_prediction(log_value['prediction_energy_consumed'], normalize(sensor_data["power_avg"])):
