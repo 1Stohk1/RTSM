@@ -26,6 +26,10 @@ def read_log():
             # If the key is "number_item_current", extract the value
             elif key == 'prediction_energy_consumed':
                 constants[key] = float(value)
+            elif key == 'power_var':
+                constants[key] = float(value)
+            elif key == 'cycle_var':
+                constants[key] = float(value)
             elif key.startswith("incremental"):
                 constants[key] = float(value)
             else:
@@ -34,7 +38,7 @@ def read_log():
 
 
 def request_sensor():
-    url = "http://127.0.0.1:5001/get_data_range?asset=P01&start_date=2022-10-04 11:57&end_date=2022-10-04 23:59"
+    url = "http://127.0.0.1:5001/get_data_range?asset=P01&start_date=2022-09-27 11:55&end_date=2022-10-14 23:59"
 
     r_data = requests.get(url=url)
 

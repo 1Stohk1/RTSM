@@ -8,8 +8,11 @@ from datetime import datetime, timedelta
 from machine_learning_modules import add_machine_state
 from data_manager import modify_val, request_sensor, request_shift, read_log, post_session
 from machine_learning_modules import normalize, warning_prediction, classify_pp
+import os
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 from tensorflow import keras
 import numpy as np
+from tqdm import tqdm
 
 # {
 #   "alarm_1": 0,                                           INPUT
@@ -38,21 +41,28 @@ import numpy as np
 
 #   "energy_cost": "0.18027573",                            OUTPUT DONE
 #   "power_var": "217.192166688596",                        OUTPUT DONE
-#   "predicted_alarm": 0,                                   OUTPUT
+#   "predicted_alarm": 0,                                   OUTPUT DONE
 #   "cycle_var": "0",                                       OUTPUT DONE
 #   "session": "2AF",                                       OUTPUT DONE
 #   "machine_state": "0",                                   OUTPUT DONE
 #   "incremental_cycle_time_avg": "0.14",                   OUTPUT DONE
-#   "incremental_cycle_time_var": "xxx",                    OUTPUT DONE
+#   "cycle_var": "xxx",                                     OUTPUT DONE
 #   "incremental_energy_cost": "10.401296428",              OUTPUT DONE
 #   "incremental_items_avg": "0",                           OUTPUT DONE
 #   "incremental_power": "20719.714",                       OUTPUT DONE
 #   "incremental_power_avg": "363.503754385965",            OUTPUT DONE
-#   "incremental_power_var": "217.192166688596",            OUTPUT DONE
+#   "power_var": "217.192166688596",                        OUTPUT DONE
 #   "incremental_state_change": 0,                          OUTPUT
-#   "incremental_part_program_cycle_time": [PP + number],   OUTPUT
-#   "part_program": 0,                                      OUTPUT
+#   "part_program": 0,                                      OUTPUT DONE
 # }
+
+
+# {'alarm_1': 0, 'alarm_2': 0, 'alarm_3': 0, 'alarm_4': 0, 'asset': 'P01', 'cycle_time': '15', 'cycle_var': None,
+# 'energy_cost': '1.25854914', 'idle_time': 0, 'incremental_cycle_time_avg': '15',
+# 'incremental_energy_cost': '1.25854914', 'incremental_items_avg': '4', 'incremental_power': '2507.07',
+# 'incremental_power_avg': '2507.07', 'items': 4, 'part_program': 1, 'power_avg': '2507.07', 'power_idle': '0',
+# 'power_max': '9182.05', 'power_min': '326.68', 'power_var': None, 'power_working': '2507.066667',
+# 'predicted_alarm': 1, 'session': '2AF', 'ts': 'Tue, 27 Sep 2022 11:55:00 GMT', 'working_time': 60}
 
 # Threshold per part program e alarm prediction (costante per settare quante volte sono state sorpassate le predizioni)
 # Aggiornare le metriche per sessione da non fare
@@ -86,8 +96,8 @@ constant_data = {
     'actual_shift': '',
     "actual_day": "",
     'row_current_shift': 0,
-    'incremental_power_var': 0,
-    'incremental_cycle_time_var': 0,
+    'power_var': 0,
+    'cycle_var': 0,
     "incremental_cycle_time_avg": 0,
     "incremental_energy_cost": 0,
     "incremental_items_avg": 0,
@@ -105,10 +115,18 @@ try:
 except FileNotFoundError:
     modify_val(constant_data)
 
+# LSTM
 model = keras.models.load_model('model')
+# MixtureGaussian
+with open('trained_part_program.model', 'rb') as f:
+    pp_model = pickle.load(f)
+
+Final_list = []
+
+Final_Dataframe_del_male = pd.DataFrame()
 
 # Iterate over the rows in the data
-for data in request_sensor():
+for data in tqdm(request_sensor(), position=0, leave=True):
     # Extract the variables from the data
     # Convert the values in the data dictionary to the appropriate data types
     sensor_data['cycle_time'] = float(data['cycle_time'])
@@ -125,6 +143,8 @@ for data in request_sensor():
     sensor_data['alarm_2'] = int(data['alarm_2'])
     sensor_data['alarm_3'] = int(data['alarm_3'])
     sensor_data['alarm_4'] = int(data['alarm_4'])
+    # Introducing data to pass in output
+    sensor_data['asset'] = data['asset']
     # Convert the string to a datetime object using strptime
     sensor_data['ts'] = datetime.strptime(data['ts'], '%a, %d %b %Y %H:%M:%S %Z')
     # year, month and day of sensor_data['ts']
@@ -133,7 +153,7 @@ for data in request_sensor():
     day = sensor_data['ts'].day
 
     # Print the variables to the console
-    print(f'Data incoming from sensor:\n {sensor_data}')
+    # print(f'Data incoming from sensor:\n {sensor_data}')
     # Iterate over the possible shifts
     for shift in shift_data:
         shift_start = datetime.strptime(shift['shift_start'], '%a, %d %b %Y %H:%M:%S %Z'). \
@@ -144,11 +164,6 @@ for data in request_sensor():
             shift_start = shift_start - timedelta(days=1)
         if (shift_end < shift_start) & (shift_end.hour < 12):
             shift_end = shift_end + timedelta(days=1)
-
-        print(f"NAME {shift['shift_name']}\n"
-              f"The shift starts in:  {shift_start.day}th {shift_start.hour}:{shift_start.minute},\n"
-              f"Receiving in:         {sensor_data['ts'].day}th {sensor_data['ts'].hour}:{sensor_data['ts'].minute}\n"
-              f"The shift ends in:    {shift_end.day}th {shift_end.hour}:{shift_end.minute}")
 
         if shift_start <= sensor_data['ts'] < shift_end:
             shift_cost = float(shift['shift_cost'])
@@ -163,20 +178,19 @@ for data in request_sensor():
     # Energy cost of the actual consumption
     output_data['energy_cost'] = shift_cost * float(sensor_data['power_avg']) / 1000
 
-    if log_value['actual_shift'] != shift_name:
-        print('shift changed')
+    if log_value['actual_shift'] != shift_name or log_value['actual_day'] != session_day:
         post_session(log_value)
         constant_data = {'number_item_current': 0, 'average_item_processed': 0, 'prev_machine_state': 0,
                          'threshold': 0, 'number_alarm_triggered': log_value['number_alarm_triggered'],
                          'actual_shift': shift_name, 'actual_day': session_day, 'row_current_shift': 0,
-                         'incremental_power_var': 0,
+                         'power_var': 0,
                          'prediction_energy_consumed': log_value['prediction_energy_consumed'],
-                         'incremental_cycle_time_var': 0, "incremental_cycle_time_avg": 0, "incremental_energy_cost": 0,
+                         'cycle_var': 0, "incremental_cycle_time_avg": 0, "incremental_energy_cost": 0,
                          "incremental_items_avg": 0, "incremental_power": 0, "incremental_power_avg": 0}
         modify_val(constant_data)
         log_value = read_log()
-        output_data['incremental_power_var'] = 0
-        output_data['incremental_cycle_time_var'] = 0
+        output_data['power_var'] = 0
+        output_data['cycle_var'] = 0
         output_data["incremental_cycle_time_avg"] = sensor_data['cycle_time']
         output_data["incremental_energy_cost"] = output_data['energy_cost']
         output_data["incremental_items_avg"] = sensor_data['items']
@@ -196,14 +210,17 @@ for data in request_sensor():
         output_data["incremental_power_avg"] = (log_value['incremental_power_avg'] * row_number + sensor_data[
             'power_avg']) / (row_number + 1)
         # var
-        output_data['incremental_power_var'] = log_value['incremental_power_var'] + (
+        output_data['power_var'] = log_value['power_var'] + (
                 sensor_data['power_avg'] - output_data["incremental_power_avg"]) * (
                                                        sensor_data['power_avg'] - output_data["incremental_power_avg"]) \
                                                / (row_number + 1)
-        output_data['incremental_cycle_time_var'] = log_value['incremental_cycle_time_var'] + (
+        output_data['cycle_var'] = log_value['cycle_var'] + (
                 sensor_data['cycle_time'] - output_data["incremental_cycle_time_avg"]) * (
                                                             sensor_data['cycle_time'] -
                                                             output_data["incremental_cycle_time_avg"]) / (row_number + 1)
+
+    constant_data['actual_shift'] = shift_name
+    constant_data['actual_day'] = session_day
 
     # Prediction of the Energy Consumed
     tmp = pd.DataFrame(sensor_data, index=[0])
@@ -212,7 +229,7 @@ for data in request_sensor():
     dataset_x = p.to_numpy()
     dataset_x = normalize(dataset_x)
     dataset_x = np.reshape(dataset_x, (1, 1, 10))
-    prediction = model.predict(dataset_x)
+    prediction = model.predict(dataset_x, verbose=0)
     constant_data['prediction_energy_consumed'] = prediction.flatten()[0]
 
     # Call the function add_machine_state
@@ -220,8 +237,6 @@ for data in request_sensor():
     output_data['machine_state'] = add_machine_state(sensor_data, log_value['prev_machine_state'])
 
     # Call the function to add the part program
-    with open('trained_part_program.model', 'rb') as f:
-        pp_model = pickle.load(f)
     output_data['part_program'] = classify_pp(pp_model, sensor_data['cycle_time'])
 
     # To be added to constant.txt
@@ -234,6 +249,7 @@ for data in request_sensor():
         constant_data['number_alarm_triggered'] = 0
     constant_data['row_current_shift'] = log_value['row_current_shift'] + 1
     constant_data['number_item_current'] = sensor_data['items'] + log_value['number_item_current']
+
     # The same that are saved in the DB
     constant_data['prev_machine_state'] = output_data['machine_state']
     constant_data['actual_shift'] = output_data['session']
@@ -243,9 +259,13 @@ for data in request_sensor():
             constant_data[key] = value
 
     modify_val(constant_data)
-
+    # Saving the outputs
+    Final_list.append(output_data.copy())
     # Print the output_data dictionary
-    print(f'Output data:\n {output_data}')
-    print(f'Constant data:\n {constant_data}\n')
+    # print(f'Output data:\n {output_data}')
+    # print(f'Constant data:\n {constant_data}\n')
 
-    time.sleep(3)
+    time.sleep(0)
+
+Final_Dataframe_del_male = pd.DataFrame(Final_list)
+Final_Dataframe_del_male.to_parquet('final_table.parquet.gzip', compression='gzip')
