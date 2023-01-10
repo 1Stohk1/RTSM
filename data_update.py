@@ -1,10 +1,16 @@
 import time
+
+import pandas as pd
 import requests
 import json
 import pickle
 from datetime import datetime, timedelta
 from alt_machine_state import add_machine_state
-from data_manager import modify_val, request_sensor, request_shift, read_log, post_session
+from data_manager import modify_val, request_sensor, request_shift, read_log, post_session, normalize, \
+    warning_prediction
+from tensorflow import keras
+from sklearn.metrics.pairwise import euclidean_distances
+import numpy as np
 
 # {
 #   "alarm_1": 0,                                           INPUT
@@ -28,7 +34,6 @@ from data_manager import modify_val, request_sensor, request_shift, read_log, po
 #   "power_min": "256.677",                                 INPUT
 #   "asset": "P01",                                         INPUT
 #   "feedback: 0,                                           INPUT in caso fosse negativo la threshold scende (NUOVA FEATURE)
-
 
 #   "energy_cost": "0.18027573",                            OUTPUT DONE
 #   "power_var": "217.192166688596",                        OUTPUT DONE
@@ -99,6 +104,8 @@ try:
 except FileNotFoundError:
     modify_val(constant_data)
 
+model = keras.models.load_model('model')
+
 # Iterate over the rows in the data
 for data in request_sensor():
     # Extract the variables from the data
@@ -151,17 +158,14 @@ for data in request_sensor():
     # ----------------------------------------------------------------------------------------------------------------------
 
     log_value = read_log()
-
-    # Energy cost of the actual consumption
-    output_data['energy_cost'] = shift_cost * float(sensor_data['power_avg']) / 1000
-
     if log_value['actual_shift'] != shift_name:
         print('shift changed')
         post_session(log_value)
         constant_data = {'number_item_current': 0, 'average_item_processed': 0, 'prev_machine_state': 0,
-                         'prediction_energy_consumed': 0, 'threshold': 0, 'number_alarm_triggered': 0,
+                         'threshold': 0, 'number_alarm_triggered': log_value['number_alarm_triggered'],
                          'actual_shift': shift_name, 'actual_day': session_day, 'row_current_shift': 0,
                          'incremental_power_var': 0,
+                         'prediction_energy_consumed': log_value['prediction_energy_consumed'],
                          'incremental_cycle_time_var': 0, "incremental_cycle_time_avg": 0, "incremental_energy_cost": 0,
                          "incremental_items_avg": 0, "incremental_power": 0, "incremental_power_avg": 0}
         modify_val(constant_data)
@@ -194,16 +198,38 @@ for data in request_sensor():
         output_data['incremental_cycle_time_var'] = log_value['incremental_cycle_time_var'] + (
                 sensor_data['cycle_time'] - output_data["incremental_cycle_time_avg"]) * (
                                                             sensor_data['cycle_time'] - output_data
-                                                            ["incremental_cycle_time_avg"]) / (row_number + 1)
+                                                    ["incremental_cycle_time_avg"]) / (row_number + 1)
+
+    # Energy cost of the actual consumption
+    output_data['energy_cost'] = shift_cost * float(sensor_data['power_avg']) / 1000
+
+    # Prediction of the Energy Consumed
+    tmp = pd.DataFrame(sensor_data, index=[0])
+    p = tmp[['items', 'working_time', 'idle_time', 'power_avg', 'power_min',
+             'power_max', 'power_working', 'power_idle', 'cycle_time', 'alarm_1']]
+    dataset_x = p.to_numpy()
+    dataset_x = normalize(dataset_x)
+    dataset_x = np.reshape(dataset_x, (1, 1, 10))
+    prediction = model.predict(dataset_x)
+    constant_data['prediction_energy_consumed'] = prediction.flatten()[0]
 
     # Call the function add_machine_state
     output_data['session'] = shift_name
     output_data['machine_state'] = add_machine_state(sensor_data, log_value['prev_machine_state'])
-    # # TODO: Caricarsi i dati e nel secondo array ci sono gli intervalli
-    # model = pickle.loads('trained_part_program.model')
+
+    # TODO: Caricarsi i dati e nel secondo array ci sono gli intervalli
+    model = pickle.loads('trained_part_program.model')
     output_data['part_program'] = 0 if sensor_data['cycle_time'] == 15.0 else 1
+    output_data['predicted_alarm'] = 0
 
     # To be added to constant.txt
+    if warning_prediction(log_value['prediction_energy_consumed'], normalize(sensor_data["power_avg"])):
+        constant_data['number_alarm_triggered'] = log_value['number_alarm_triggered'] + 1
+        if constant_data['number_alarm_triggered'] == 10:
+            constant_data['number_alarm_triggered'] = 0
+            output_data['predicted_alarm'] = 1
+    else:
+        constant_data['number_alarm_triggered'] = 0
     constant_data['row_current_shift'] = log_value['row_current_shift'] + 1
     constant_data['number_item_current'] = sensor_data['items'] + log_value['number_item_current']
     # The same that are saved in the DB
@@ -220,4 +246,4 @@ for data in request_sensor():
     print(f'Output data:\n {output_data}')
     print(f'Constant data:\n {constant_data}\n')
 
-    time.sleep(0)
+    time.sleep(3)

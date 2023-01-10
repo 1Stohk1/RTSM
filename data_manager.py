@@ -1,5 +1,6 @@
 import requests
 import json
+import numpy as np
 
 
 def modify_val(constants):
@@ -23,6 +24,8 @@ def read_log():
             if key == 'actual_shift':
                 constants[key] = value
             # If the key is "number_item_current", extract the value
+            elif key == 'prediction_energy_consumed':
+                constants[key] = float(value)
             elif key.startswith("incremental"):
                 constants[key] = float(value)
             else:
@@ -48,3 +51,20 @@ def request_shift():
 def post_session(session_data):
     # TODO: Salvare i dati nella tabella delle sessioni
     pass
+
+
+def normalize(data):
+    data = data - 556.7097442631564
+    data = data / np.sqrt(3169070.190238107)
+    return data
+
+
+def inv_normalize(data):
+    data = data * np.sqrt(3169070.190238107)
+    data = data + 556.7097442631564
+    return data
+
+
+def warning_prediction(prediction, target, threshold=0.9):
+    d = abs(target - prediction)
+    return d > threshold
