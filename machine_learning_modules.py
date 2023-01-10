@@ -1,3 +1,6 @@
+import numpy as np
+
+
 def add_machine_state(curr, prev_state):
     if curr['working_time'] > 0 and curr['idle_time'] > 0 and \
             curr['alarm_1'] > 0:  # abbiamo sia working che idle che alarm
@@ -35,7 +38,7 @@ def add_machine_state(curr, prev_state):
             pass
         else:  # working V alarm-> alarm
             prev_state = 2
-    else:  # abbimao solo idle time
+    else:  # abbiamo solo idle time
         if (prev_state == 2 and ((curr['ts'].hour <= 6) or (
                 curr['ts'].hour >= 21))):  # siamo in alarm dopo le 21 e prima delle 6 alarm->idle
             prev_state = 0
@@ -46,3 +49,27 @@ def add_machine_state(curr, prev_state):
         else:  # idle->idle
             pass
     return prev_state
+
+
+def classify_pp(model, value):
+    for pp, t in enumerate(model['splits']):
+        if value < t:
+            return pp
+    return -1
+
+
+def normalize(data):
+    data = data - 556.7097442631564
+    data = data / np.sqrt(3169070.190238107)
+    return data
+
+
+def inv_normalize(data):
+    data = data * np.sqrt(3169070.190238107)
+    data = data + 556.7097442631564
+    return data
+
+
+def warning_prediction(prediction, target, threshold=0.9):
+    d = abs(target - prediction)
+    return d > threshold
