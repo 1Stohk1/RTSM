@@ -1,3 +1,4 @@
+import csv
 import os
 import pickle
 from datetime import datetime, timedelta
@@ -7,61 +8,11 @@ import pandas as pd
 from data_manager import modify_val, request_sensor, request_shift, read_log, post_session
 from machine_learning_modules import add_machine_state
 from machine_learning_modules import normalize, warning_prediction, classify_pp
-
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 from tensorflow import keras
 import numpy as np
 from tqdm import tqdm
 
-# {
-#   "alarm_1": 0,                                           INPUT
-#   "alarm_2": 0,                                           INPUT
-#   "alarm_3": 0,                                           INPUT
-#   "alarm_4": 0,                                           INPUT
-
-# -----------------------------------------------------------SESSION
-#   "ts": "Fri, 14 Oct 2022 11:56:00 GMT",                  INPUT
-# -----------------------------------------------------------MACHINE STATE
-#   "cycle_time": "0",                                      INPUT
-#   "idle_time": 60,                                        INPUT
-#   "working_time": 0                                       INPUT
-#   "power_working": "0",                                   INPUT
-# -----------------------------------------------------------METRICS
-#   "items": 0,                                             INPUT
-# -----------------------------------------------------------CONSUMPTION & PREDICTION ENERGY
-#   "power_avg": "359.115",                                 INPUT
-#   "power_idle": "359.115",                                INPUT
-#   "power_max": "560.023",                                 INPUT
-#   "power_min": "256.677",                                 INPUT
-#   "asset": "P01",                                         INPUT
-#   "feedback: 0,                                           INPUT in caso fosse negativo la
-#                                                           threshold scende (NUOVA FEATURE)
-
-
-#   "energy_cost": "0.18027573",                            OUTPUT DONE
-#   "power_var": "217.192166688596",                        OUTPUT DONE
-#   "predicted_alarm": 0,                                   OUTPUT DONE
-#   "cycle_var": "0",                                       OUTPUT DONE
-#   "session": "2AF",                                       OUTPUT DONE
-#   "machine_state": "0",                                   OUTPUT DONE
-#   "incremental_cycle_time_avg": "0.14",                   OUTPUT DONE
-#   "cycle_var": "xxx",                                     OUTPUT DONE
-#   "incremental_energy_cost": "10.401296428",              OUTPUT DONE
-#   "incremental_items_avg": "0",                           OUTPUT DONE
-#   "incremental_power": "20719.714",                       OUTPUT DONE
-#   "incremental_power_avg": "363.503754385965",            OUTPUT DONE
-#   "power_var": "217.192166688596",                        OUTPUT DONE
-#   "incremental_state_change": 0,                          OUTPUT
-#   "part_program": 0,                                      OUTPUT DONE
-# }
-
-
-# {'alarm_1': 0, 'alarm_2': 0, 'alarm_3': 0, 'alarm_4': 0, 'asset': 'P01', 'cycle_time': '15', 'cycle_var': None,
-# 'energy_cost': '1.25854914', 'idle_time': 0, 'incremental_cycle_time_avg': '15',
-# 'incremental_energy_cost': '1.25854914', 'incremental_items_avg': '4', 'incremental_power': '2507.07',
-# 'incremental_power_avg': '2507.07', 'items': 4, 'part_program': 1, 'power_avg': '2507.07', 'power_idle': '0',
-# 'power_max': '9182.05', 'power_min': '326.68', 'power_var': None, 'power_working': '2507.066667',
-# 'predicted_alarm': 1, 'session': '2AF', 'ts': 'Tue, 27 Sep 2022 11:55:00 GMT', 'working_time': 60}
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
 # Threshold per part program e alarm prediction (costante per settare quante volte sono state sorpassate le predizioni)
 # Aggiornare le metriche per sessione da non fare
@@ -121,8 +72,24 @@ with open('trained_part_program.model', 'rb') as f:
     pp_model = pickle.load(f)
 
 Final_list = []
-
 Final_Dataframe_del_male = pd.DataFrame()
+
+filename = "processed_data_full.csv"
+# opening the file with w+ mode truncates the file
+f = open(filename, "w")
+keys = ['energy_cost', 'incremental_cycle_time_avg', 'incremental_energy_cost', 'incremental_items_avg',
+        'incremental_power', 'incremental_power_avg', 'power_var', 'cycle_var', 'session', 'machine_state',
+        'part_program', 'predicted_alarm', 'cycle_time', 'idle_time', 'working_time', 'power_working', 'items',
+        'power_avg', 'power_idle', 'power_max', 'power_min', 'alarm_1', 'alarm_2', 'alarm_3', 'alarm_4', 'asset', 'ts']
+
+# write for me variable keys without ''
+
+
+writer = csv.DictWriter(f, keys)
+writer.writeheader()
+f.close()
+
+counter = 0
 
 # Iterate over the rows in the data
 for data in tqdm(request_sensor(), position=0, leave=True):
@@ -211,12 +178,12 @@ for data in tqdm(request_sensor(), position=0, leave=True):
         # var
         output_data['power_var'] = log_value['power_var'] + (
                 sensor_data['power_avg'] - output_data["incremental_power_avg"]) * (
-                                                       sensor_data['power_avg'] - output_data["incremental_power_avg"]) \
-                                               / (row_number + 1)
+                                           sensor_data['power_avg'] - output_data["incremental_power_avg"]) \
+                                   / (row_number + 1)
         output_data['cycle_var'] = log_value['cycle_var'] + (
                 sensor_data['cycle_time'] - output_data["incremental_cycle_time_avg"]) * (
-                                                            sensor_data['cycle_time'] -
-                                                            output_data["incremental_cycle_time_avg"]) / (row_number + 1)
+                                           sensor_data['cycle_time'] -
+                                           output_data["incremental_cycle_time_avg"]) / (row_number + 1)
 
     constant_data['actual_shift'] = shift_name
     constant_data['actual_day'] = session_day
@@ -263,7 +230,25 @@ for data in tqdm(request_sensor(), position=0, leave=True):
     # Saving the outputs
     complete_data = output_data.copy()
     complete_data.update(sensor_data)
+    Final_list.append(complete_data)
+    counter += 1
+    if counter == 10:
+        f = open(filename, "a+")
+        writer = csv.DictWriter(f, complete_data.keys())
+        writer.writerows(Final_list)
+        Final_list.clear()
+        counter = 0
     # Print the output_data dictionary
     # print(f'Output data:\n {output_data}')
     # print(f'Constant data:\n {constant_data}\n')
-    print(f'Complete data:\n {complete_data}\n')
+
+if not counter == 0:
+    f = open(filename, "a+")
+    writer = csv.DictWriter(f, keys)
+    writer.writerows(Final_list)
+    Final_list.clear()
+    counter = 0
+
+# Final_Dataframe_del_male = pd.DataFrame(Final_list)
+# print(Final_Dataframe_del_male)
+# Final_Dataframe_del_male.to_parquet('final_table.parquet.gzip', compression='gzip')
